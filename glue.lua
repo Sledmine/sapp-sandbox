@@ -1,21 +1,19 @@
 
--- Lua extended vocabulary of tools.
+-- Lua extended vocabulary of basic tools.
 -- Written by Cosmin Apreutesei. Public domain.
--- Expanded by Sledmine.
+-- Modifications by Sled
 
 local glue = {}
 
-local min, max, floor, ceil, log, select, unpack, pairs, rawget =
-	math.min, math.max, math.floor, math.ceil, math.log, select, unpack, pairs, rawget
+local min, max, floor, ceil, log =
+	math.min, math.max, math.floor, math.ceil, math.log
+local select, unpack, pairs, rawget = select, unpack, pairs, rawget
+
+--math -----------------------------------------------------------------------
 
 function glue.round(x, p)
 	p = p or 1
 	return floor(x / p + .5) * p
-end
-
-function glue.dround(number, decimals)
-	local power = 10^decimals
-	return math.floor(number * power) / power
 end
 
 function glue.floor(x, p)
@@ -42,13 +40,22 @@ function glue.nextpow2(x)
 	return max(0, 2^(ceil(log(x) / log(2))))
 end
 
-function glue.pack(...)
-	return {n = select('#', ...), ...}
+--varargs --------------------------------------------------------------------
+
+if table.pack then
+	glue.pack = table.pack
+else
+	function glue.pack(...)
+		return {n = select('#', ...), ...}
+	end
 end
 
+--always use this because table.unpack's default j is #t not t.n.
 function glue.unpack(t, i, j)
 	return unpack(t, i or 1, j or t.n or #t)
 end
+
+--tables ---------------------------------------------------------------------
 
 --count the keys in a table with an optional upper limit.
 function glue.count(t, maxn)
@@ -68,14 +75,17 @@ function glue.index(t)
 	return dt
 end
 
---list of keys, optionally sorted.
+--put keys in a list, optionally sorted.
+local function desc_cmp(a, b) return a > b end
 function glue.keys(t, cmp)
 	local dt={}
 	for k in pairs(t) do
 		dt[#dt+1]=k
 	end
-	if cmp == true then
+	if cmp == true or cmp == 'asc' then
 		table.sort(dt)
+	elseif cmp == 'desc' then
+		table.sort(dt, desc_cmp)
 	elseif cmp then
 		table.sort(dt, cmp)
 	end
@@ -115,6 +125,22 @@ function glue.merge(dt,...)
 	end
 	return dt
 end
+
+--get the value of a table field, and if the field is not present in the
+--table, create it as an empty table, and return it.
+function glue.attr(t, k, v0)
+	local v = t[k]
+	if v == nil then
+		if v0 == nil then
+			v0 = {}
+		end
+		v = v0
+		t[k] = v
+	end
+	return v
+end
+
+--lists ----------------------------------------------------------------------
 
 --extend a list with the elements of other lists.
 function glue.extend(dt,...)
@@ -213,7 +239,9 @@ function glue.map(t, f, ...)
 	return dt
 end
 
---scan list for value. works with ffi arrays too.
+--arrays ---------------------------------------------------------------------
+
+--scan list for value. works with ffi arrays too given i and j.
 function glue.indexof(v, t, eq, i, j)
 	i = i or 1
 	j = j or #t
@@ -232,7 +260,9 @@ function glue.indexof(v, t, eq, i, j)
 	end
 end
 
--- Return the index of a table/array if value exists
+--- Return the index of a table/array if value exists
+---@param array table
+---@param value any
 function glue.arrayhas(array, value)
 	for k,v in pairs(array) do
 		if (v == value) then return k end
@@ -241,17 +271,19 @@ function glue.arrayhas(array, value)
 end
 
 --- Get the new values of an array
-function glue.arraynv(oldArray, newArray)
-	local newValues = {}
-	for k,v in pairs(newArray) do
-		if (not glue.arrayhas(oldArray, v)) then
-			glue.append(newValues, v)
+---@param oldarray table
+---@param newarray table
+function glue.arraynv(oldarray, newarray)
+	local newvalues = {}
+	for k,v in pairs(newarray) do
+		if (not glue.arrayhas(oldarray, v)) then
+			glue.append(newvalues, v)
 		end
 	end
-	return newValues
+	return newvalues
 end
 
---reverse elements of a list in place. works with ffi arrays too.
+--reverse elements of a list in place. works with ffi arrays too given i and j.
 function glue.reverse(t, i, j)
 	i = i or 1
 	j = (j or #t) + 1
@@ -259,6 +291,66 @@ function glue.reverse(t, i, j)
 		t[i+k-1], t[j-k] = t[j-k], t[i+k-1]
 	end
 	return t
+end
+
+--- Get all the values of a key recursively
+---@param t table
+---@param dp any
+function glue.childsbyparent(t, dp)
+    for p,ch in pairs(t) do
+		if (p == dp) then
+			return ch
+		end
+		if (ch) then
+			local found = glue.childsbyparent(ch, dp)
+			if (found) then
+				return found
+			end
+		end
+    end
+    return nil
+end
+
+-- Get the key of a value recursively
+---@param t table
+---@param dp any
+function glue.parentbychild(t, dp)
+    for p,ch in pairs(t) do
+		if (ch[dp]) then
+			return p
+		end
+		if (ch) then
+			local found = glue.parentbychild(ch, dp)
+			if (found) then
+				return found
+			end
+		end
+    end
+    return nil
+end
+
+--- Split a list/array into small parts of given size
+---@param list table
+---@param chunks number
+function glue.chunks(list, chunks)
+	local chunkcounter = 0
+	local chunk = {}
+	local chunklist = {}
+	-- Append chunks to the list in the specified amount of elements
+	for k,v in pairs(list) do
+		if (chunkcounter == chunks) then
+			glue.append(chunklist, chunk)
+			chunk = {}
+			chunkcounter = 0
+		end
+		glue.append(chunk, v)
+		chunkcounter = chunkcounter + 1
+	end
+	-- If there was a chunk that was not completed append it
+	if (chunkcounter ~= 0) then
+		glue.append(chunklist, chunk)
+	end
+	return chunklist
 end
 
 --binary search for an insert position that keeps the table sorted.
@@ -289,26 +381,28 @@ function glue.binsearch(v, t, cmp, lo, hi)
 	return lo
 end
 
+--strings --------------------------------------------------------------------
+
 --string submodule. has its own namespace which can be merged with _G.string.
 glue.string = {}
+
+--- Split a string list/array given a separator string
+function glue.string.split(s, sep)
+    if (sep == nil or sep == '') then return 1 end
+    local position, array = 0, {}
+    for st, sp in function() return string.find(s, sep, position, true) end do
+        table.insert(array, string.sub(s, position, st-1))
+        position = sp + 1
+    end
+    table.insert(array, string.sub(s, position))
+    return array
+end
 
 --split a string by a separator that can be a pattern or a plain string.
 --return a stateless iterator for the pieces.
 local function iterate_once(s, s1)
 	return s1 == nil and s or nil
 end
-
-function glue.string.split(divider, string)
-    if (divider == nil or divider == '') then return 1 end
-    local position, array = 0, {}
-    for st, sp in function() return string.find(string, divider, position, true) end do
-        table.insert(array, string.sub(string, position, st-1))
-        position = sp + 1
-    end
-    table.insert(array, string.sub(string, position))
-    return array
-end
-
 function glue.string.gsplit(s, sep, start, plain)
 	start = start or 1
 	plain = plain or false
@@ -368,7 +462,6 @@ end
 
 --string or number to hex.
 function glue.string.tohex(s, upper)
-	local s = tostring(s)
 	if type(s) == 'number' then
 		return (upper and '%08.8X' or '%08.8x'):format(s)
 	end
@@ -383,9 +476,8 @@ function glue.string.tohex(s, upper)
 	end
 end
 
---hex to string.
+--hex to binary string.
 function glue.string.fromhex(s)
-	local s = tostring(s)
 	if #s % 2 == 1 then
 		return glue.string.fromhex('0'..s)
 	end
@@ -398,8 +490,18 @@ function glue.string.starts(s, p) --5x faster than s:find'^...' in LuaJIT 2.1
 	return s:sub(1, #p) == p
 end
 
+function glue.string.ends(s, p)
+	return p == '' or s:sub(-#p) == p
+end
+
+function glue.string.subst(s, t) --subst('{foo} {bar}', {foo=1, bar=2}) -> '1 2'
+	return s:gsub('{([_%w]+)}', t)
+end
+
 --publish the string submodule in the glue namespace.
 glue.update(glue, glue.string)
+
+--iterators ------------------------------------------------------------------
 
 --run an iterator and collect the n-th return value into a list.
 local function select_at(i,...)
@@ -427,239 +529,13 @@ function glue.collect(n,...)
 	end
 end
 
---no-op filter.
+--closures -------------------------------------------------------------------
+
+--no-op filters.
 function glue.pass(...) return ... end
 function glue.noop() return end
 
---set up dynamic inheritance by creating or updating a table's metatable.
-function glue.inherit(t, parent)
-	local meta = getmetatable(t)
-	if meta then
-		meta.__index = parent
-	elseif parent ~= nil then
-		setmetatable(t, {__index = parent})
-	end
-	return t
-end
-
---prototype-based dynamic inheritance with __call constructor.
-function glue.object(super, o, ...)
-	o = o or {}
-	o.__index = super
-	o.__call = super and super.__call
-	glue.update(o, ...) --add mixins, defaults, etc.
-	return setmetatable(o, o)
-end
-
---get the value of a table field, and if the field is not present in the
---table, create it as an empty table, and return it.
-function glue.attr(t, k, v0)
-	local v = t[k]
-	if v == nil then
-		if v0 == nil then
-			v0 = {}
-		end
-		v = v0
-		t[k] = v
-	end
-	return v
-end
-
---check if a file exists and can be opened for reading or writing.
-function glue.canopen(name, mode)
-	local f = io.open(name, mode or 'rb')
-	if f then f:close() end
-	return f ~= nil and name or nil
-end
-
---read a file into a string (in binary mode by default).
-function glue.readfile(name, mode, open)
-	open = open or io.open
-	local f, err = open(name, mode=='t' and 'r' or 'rb')
-	if not f then return nil, err end
-	local s, err = f:read'*a'
-	if s == nil then return nil, err end
-	f:close()
-	return s
-end
-
---read the output of a command into a string.
-function glue.readpipe(cmd, mode, open)
-	return glue.readfile(cmd, mode, open or io.popen)
-end
-
---like os.rename() but behaves like POSIX on Windows too.
-if jit then
-
-	local ffi = require'ffi'
-
-	if ffi.os == 'Windows' then
-
-		ffi.cdef[[
-			int MoveFileExA(
-				const char *lpExistingFileName,
-				const char *lpNewFileName,
-				unsigned long dwFlags
-			);
-			int GetLastError(void);
-		]]
-
-		local MOVEFILE_REPLACE_EXISTING = 1
-
-		function glue.replacefile(oldfile, newfile)
-			local ret = ffi.C.MoveFileExA(oldfile, newfile,
-				MOVEFILE_REPLACE_EXISTING)
-			if ret == 0 then
-				local err = ffi.C.GetLastError()
-				return nil, 'WinAPI error '..err
-			else
-				return true
-			end
-		end
-
-	else
-
-		function glue.replacefile(oldfile, newfile)
-			return os.rename(oldfile, newfile)
-		end
-
-	end
-
-end
-
---write a string, number, or table to a file (in binary mode by default).
-function glue.writefile(filename, s, mode, tmpfile)
-	if tmpfile then
-		local ok, err = glue.writefile(tmpfile, s, mode)
-		if not ok then
-			return nil, err
-		end
-		local ok, err = glue.replacefile(tmpfile, filename)
-		if not ok then
-			os.remove(tmpfile)
-			return nil, err
-		else
-			return true
-		end
-	end
-	local f, err = io.open(filename, mode=='t' and 'w' or 'wb')
-	if not f then
-		return nil, err
-	end
-	local ok, err
-	if type(s) == 'table' then
-		for i = 1, #s do
-			ok, err = f:write(s[i])
-			if not ok then break end
-		end
-	elseif type(s) == 'function' then
-		local read = s
-		while true do
-			ok, err = xpcall(read, debug.traceback)
-			if not ok or err == nil then break end
-			ok, err = f:write(err)
-			if not ok then break end
-		end
-	else --string or number
-		ok, err = f:write(s)
-	end
-	f:close()
-	if not ok then
-		os.remove(filename)
-		return nil, err
-	else
-		return true
-	end
-end
-
---virtualize the print function.
-function glue.printer(out, format)
-	format = format or glue.pass
-	return function(...)
-		local n = select('#', ...)
-		for i=1,n do
-			out(format((select(i, ...))))
-			if i < n then
-				out'\t'
-			end
-		end
-		out'\n'
-	end
-end
-
---assert() with string formatting (this should be a Lua built-in).
---NOTE: unlike standard assert(), this only returns the first argument
---to avoid returning the error message and it's args along with it.
-function glue.assert(v, err, ...)
-	if v then return v end
-	err = err or 'assertion failed!'
-	if select('#',...) > 0 then
-		err = string.format(err, ...)
-	end
-	error(err, 2)
-end
-
---pcall with traceback. LuaJIT and Lua 5.2 only.
-local function pcall_error(e)
-	return tostring(e) .. '\n' .. debug.traceback()
-end
-function glue.pcall(f, ...)
-	return xpcall(f, pcall_error, ...)
-end
-
-local function unprotect(ok, result, ...)
-	if not ok then return nil, result, ... end
-	if result == nil then result = true end --to distinguish from error.
-	return result, ...
-end
-
---wrap a function that raises errors on failure into a function that follows
---the Lua convention of returning nil,err on failure.
-function glue.protect(func)
-	return function(...)
-		return unprotect(pcall(func, ...))
-	end
-end
-
---pcall with finally and except "clauses":
---		local ret,err = fpcall(function(finally, except)
---			local foo = getfoo()
---			finally(function() foo:free() end)
---			except(function(err) io.stderr:write(err, '\n') end)
---		emd)
---NOTE: a bit bloated at 2 tables and 4 closures. Can we reduce the overhead?
-local function fpcall(f,...)
-	local fint, errt = {}, {}
-	local function finally(f) fint[#fint+1] = f end
-	local function onerror(f) errt[#errt+1] = f end
-	local function err(e)
-		for i=#errt,1,-1 do errt[i](e) end
-		for i=#fint,1,-1 do fint[i]() end
-		return tostring(e) .. '\n' .. debug.traceback()
-	end
-	local function pass(ok,...)
-		if ok then
-			for i=#fint,1,-1 do fint[i]() end
-		end
-		return ok,...
-	end
-	return pass(xpcall(f, err, finally, onerror, ...))
-end
-
-function glue.fpcall(...)
-	return unprotect(fpcall(...))
-end
-
---fcall is like fpcall() but without the protection (i.e. raises errors).
-local function assert_fpcall(ok, ...)
-	if not ok then error(..., 2) end
-	return ...
-end
-function glue.fcall(...)
-	return assert_fpcall(fpcall(...))
-end
-
---memoize for 1 and 2-arg and vararg and 1 retval functions.
+--memoize for 0, 1, 2-arg and vararg and 1 retval functions.
 local function memoize0(fn) --for strict no-arg functions
 	local v, stored
 	return function()
@@ -762,6 +638,404 @@ function glue.memoize_multiret(func, narg)
 	end
 end
 
+local tuple_mt = {__call = glue.unpack}
+function tuple_mt:__tostring()
+	local t = {}
+	for i=1,self.n do
+		t[i] = tostring(self[i])
+	end
+	return string.format('(%s)', table.concat(t, ', '))
+end
+function glue.tuples(narg)
+	return glue.memoize(function(...)
+		return setmetatable(glue.pack(...), tuple_mt)
+	end)
+end
+
+--objects --------------------------------------------------------------------
+
+--set up dynamic inheritance by creating or updating a table's metatable.
+function glue.inherit(t, parent)
+	local meta = getmetatable(t)
+	if meta then
+		meta.__index = parent
+	elseif parent ~= nil then
+		setmetatable(t, {__index = parent})
+	end
+	return t
+end
+
+--prototype-based dynamic inheritance with __call constructor.
+function glue.object(super, o, ...)
+	o = o or {}
+	o.__index = super
+	o.__call = super and super.__call
+	glue.update(o, ...) --add mixins, defaults, etc.
+	return setmetatable(o, o)
+end
+
+local function install(self, combine, method_name, hook)
+	rawset(self, method_name, combine(self[method_name], hook))
+end
+local function before(method, hook)
+	if method then
+		return function(self, ...)
+			hook(self, ...)
+			return method(self, ...)
+		end
+	else
+		return hook
+	end
+end
+function glue.before(self, method_name, hook)
+	install(self, before, method_name, hook)
+end
+local function after(method, hook)
+	if method then
+		return function(self, ...)
+			method(self, ...)
+			return hook(self, ...)
+		end
+	else
+		return hook
+	end
+end
+function glue.after(self, method_name, hook)
+	install(self, after, method_name, hook)
+end
+local function override(method, hook)
+	local method = method or glue.noop
+	return function(...)
+		return hook(method, ...)
+	end
+end
+function glue.override(self, method_name, hook)
+	install(self, override, method_name, hook)
+end
+
+--return a metatable that supports virtual properties.
+--can be used with setmetatable() and ffi.metatype().
+function glue.gettersandsetters(getters, setters, super)
+	local get = getters and function(t, k)
+		local get = getters[k]
+		if get then return get(t) end
+		return super and super[k]
+	end
+	local set = setters and function(t, k, v)
+		local set = setters[k]
+		if set then set(t, v); return end
+		rawset(t, k, v)
+	end
+	return {__index = get, __newindex = set}
+end
+
+--i/o ------------------------------------------------------------------------
+
+--check if a file exists and can be opened for reading or writing.
+function glue.canopen(name, mode)
+	local f = io.open(name, mode or 'rb')
+	if f then f:close() end
+	return f ~= nil and name or nil
+end
+
+--read a file into a string (in binary mode by default).
+function glue.readfile(name, mode, open)
+	open = open or io.open
+	local f, err = open(name, mode=='t' and 'r' or 'rb')
+	if not f then return nil, err end
+	local s, err = f:read'*a'
+	if s == nil then return nil, err end
+	f:close()
+	return s
+end
+
+--read the output of a command into a string.
+function glue.readpipe(cmd, mode, open)
+	return glue.readfile(cmd, mode, open or io.popen)
+end
+
+--like os.rename() but behaves like POSIX on Windows too.
+if jit then
+
+	local ffi = require'ffi'
+
+	if ffi.os == 'Windows' then
+
+		ffi.cdef[[
+			int MoveFileExA(
+				const char *lpExistingFileName,
+				const char *lpNewFileName,
+				unsigned long dwFlags
+			);
+			int GetLastError(void);
+		]]
+
+		local MOVEFILE_REPLACE_EXISTING = 1
+		local MOVEFILE_WRITE_THROUGH    = 8
+		local ERROR_FILE_EXISTS         = 80
+		local ERROR_ALREADY_EXISTS      = 183
+
+		function glue.replacefile(oldfile, newfile)
+			if ffi.C.MoveFileExA(oldfile, newfile, 0) ~= 0 then
+				return true
+			end
+			local err = ffi.C.GetLastError()
+			if err == ERROR_FILE_EXISTS or err == ERROR_ALREADY_EXISTS then
+				if ffi.C.MoveFileExA(oldfile, newfile,
+					bit.bor(MOVEFILE_WRITE_THROUGH, MOVEFILE_REPLACE_EXISTING)) ~= 0
+				then
+					return true
+				end
+				err = ffi.C.GetLastError()
+			end
+			return nil, 'WinAPI error '..err
+		end
+
+	else
+
+		function glue.replacefile(oldfile, newfile)
+			return os.rename(oldfile, newfile)
+		end
+
+	end
+
+end
+
+--write a string, number, table or the results of a read function to a file.
+--uses binary mode by default.
+function glue.writefile(filename, s, mode, tmpfile)
+	if tmpfile then
+		local ok, err = glue.writefile(tmpfile, s, mode)
+		if not ok then
+			return nil, err
+		end
+		local ok, err = glue.replacefile(tmpfile, filename)
+		if not ok then
+			os.remove(tmpfile)
+			return nil, err
+		else
+			return true
+		end
+	end
+	local f, err = io.open(filename, mode=='t' and 'w' or 'wb')
+	if not f then
+		return nil, err
+	end
+	local ok, err
+	if type(s) == 'table' then
+		for i = 1, #s do
+			ok, err = f:write(s[i])
+			if not ok then break end
+		end
+	elseif type(s) == 'function' then
+		local read = s
+		while true do
+			ok, err = xpcall(read, debug.traceback)
+			if not ok or err == nil then break end
+			ok, err = f:write(err)
+			if not ok then break end
+		end
+	else --string or number
+		ok, err = f:write(s)
+	end
+	f:close()
+	if not ok then
+		os.remove(filename)
+		return nil, err
+	else
+		return true
+	end
+end
+
+--virtualize the print function.
+function glue.printer(out, format)
+	format = format or tostring
+	return function(...)
+		local n = select('#', ...)
+		for i=1,n do
+			out(format((select(i, ...))))
+			if i < n then
+				out'\t'
+			end
+		end
+		out'\n'
+	end
+end
+
+--dates & timestamps ---------------------------------------------------------
+
+--compute timestamp diff. to UTC because os.time() has no option for UTC.
+function glue.utc_diff(t)
+   local d1 = os.date( '*t', 3600 * 24 * 10)
+   local d2 = os.date('!*t', 3600 * 24 * 10)
+	d1.isdst = false
+	return os.difftime(os.time(d1), os.time(d2))
+end
+
+--overloading os.time to support UTC and get the date components as separate args.
+function glue.time(utc, y, m, d, h, M, s, isdst)
+	if type(utc) ~= 'boolean' then --shift arg#1
+		utc, y, m, d, h, M, s, isdst = nil, utc, y, m, d, h, M, s
+	end
+	if type(y) == 'table' then
+		local t = y
+		if utc == nil then utc = t.utc end
+		y, m, d, h, M, s, isdst = t.year, t.month, t.day, t.hour, t.min, t.sec, t.isdst
+	end
+	local utc_diff = utc and glue.utc_diff() or 0
+	if not y then
+		return os.time() + utc_diff
+	else
+		s = s or 0
+		local t = os.time{year = y, month = m or 1, day = d or 1, hour = h or 0,
+			min = M or 0, sec = s, isdst = isdst}
+		return t and t + s - floor(s) + utc_diff
+	end
+end
+
+--get the time at the start of the week of a given time, plus/minus a number of weeks.
+function glue.sunday(utc, t, offset)
+	if type(utc) ~= 'boolean' then --shift arg#1
+		utc, t, offset = false, utc, t
+	end
+	local d = os.date(utc and '!*t' or '*t', t)
+	return glue.time(false, d.year, d.month, d.day - (d.wday - 1) + (offset or 0) * 7)
+end
+
+--get the time at the start of the day of a given time, plus/minus a number of days.
+function glue.day(utc, t, offset)
+	if type(utc) ~= 'boolean' then --shift arg#1
+		utc, t, offset = false, utc, t
+	end
+	local d = os.date(utc and '!*t' or '*t', t)
+	return glue.time(false, d.year, d.month, d.day + (offset or 0))
+end
+
+--get the time at the start of the month of a given time, plus/minus a number of months.
+function glue.month(utc, t, offset)
+	if type(utc) ~= 'boolean' then --shift arg#1
+		utc, t, offset = false, utc, t
+	end
+	local d = os.date(utc and '!*t' or '*t', t)
+	return glue.time(false, d.year, d.month + (offset or 0))
+end
+
+--get the time at the start of the year of a given time, plus/minus a number of years.
+function glue.year(utc, t, offset)
+	if type(utc) ~= 'boolean' then --shift arg#1
+		utc, t, offset = false, utc, t
+	end
+	local d = os.date(utc and '!*t' or '*t', t)
+	return glue.time(false, d.year + (offset or 0))
+end
+
+--error handling -------------------------------------------------------------
+
+--allocation-free assert() with string formatting.
+--NOTE: unlike standard assert(), this only returns the first argument
+--to avoid returning the error message and it's args along with it so don't
+--use it with functions returning multiple values when you want those values.
+function glue.assert(v, err, ...)
+	if v then return v end
+	err = err or 'assertion failed!'
+	if select('#',...) > 0 then
+		err = string.format(err, ...)
+	end
+	error(err, 2)
+end
+
+--pcall with traceback. LuaJIT and Lua 5.2 only.
+local function pcall_error(e)
+	return debug.traceback('\n'..tostring(e))
+end
+function glue.pcall(f, ...)
+	return xpcall(f, pcall_error, ...)
+end
+
+local function unprotect(ok, result, ...)
+	if not ok then return nil, result, ... end
+	if result == nil then result = true end --to distinguish from error.
+	return result, ...
+end
+
+--wrap a function that raises errors on failure into a function that follows
+--the Lua convention of returning nil,err on failure.
+function glue.protect(func)
+	return function(...)
+		return unprotect(pcall(func, ...))
+	end
+end
+
+--pcall with finally and except "clauses":
+--		local ret,err = fpcall(function(finally, except)
+--			local foo = getfoo()
+--			finally(function() foo:free() end)
+--			except(function(err) io.stderr:write(err, '\n') end)
+--		emd)
+--NOTE: a bit bloated at 2 tables and 4 closures. Can we reduce the overhead?
+local function fpcall(f,...)
+	local fint, errt = {}, {}
+	local function finally(f) fint[#fint+1] = f end
+	local function onerror(f) errt[#errt+1] = f end
+	local function err(e)
+		for i=#errt,1,-1 do errt[i](e) end
+		for i=#fint,1,-1 do fint[i]() end
+		return tostring(e) .. '\n' .. debug.traceback()
+	end
+	local function pass(ok,...)
+		if ok then
+			for i=#fint,1,-1 do fint[i]() end
+		end
+		return ok,...
+	end
+	return pass(xpcall(f, err, finally, onerror, ...))
+end
+
+function glue.fpcall(...)
+	return unprotect(fpcall(...))
+end
+
+--fcall is like fpcall() but without the protection (i.e. raises errors).
+local function assert_fpcall(ok, ...)
+	if not ok then error(..., 2) end
+	return ...
+end
+function glue.fcall(...)
+	return assert_fpcall(fpcall(...))
+end
+
+--modules --------------------------------------------------------------------
+
+--create a module table that dynamically inherits another module.
+--naming the module returns the same module table for the same name.
+function glue.module(name, parent)
+	if type(name) ~= 'string' then
+		name, parent = parent, name
+	end
+	if type(parent) == 'string' then
+		parent = require(parent)
+	end
+	parent = parent or _M
+	local parent_P = parent and assert(parent._P, 'parent module has no _P') or _G
+	local M = package.loaded[name]
+	if M then
+		return M, M._P
+	end
+	local P = {__index = parent_P}
+	M = {__index = parent, _P = P}
+	P._M = M
+	M._M = M
+	P._P = P
+	setmetatable(P, P)
+	setmetatable(M, M)
+	if name then
+		package.loaded[name] = M
+		P[name] = M
+	end
+	setfenv(2, P)
+	return M, P
+end
+
 --setup a module to load sub-modules when accessing specific keys.
 function glue.autoload(t, k, v)
 	local mt = getmetatable(t) or {}
@@ -845,7 +1119,9 @@ function glue.cpath(path, index)
 	package.cpath = table.concat(paths, tsep)
 end
 
---freelist for Lua tables, providing the fields .
+--allocation -----------------------------------------------------------------
+
+--freelist for Lua tables.
 local function create_table()
 	return {}
 end
@@ -870,48 +1146,41 @@ function glue.freelist(create, destroy)
 	return alloc, free
 end
 
+--ffi ------------------------------------------------------------------------
+
 if jit then
 
 local ffi = require'ffi'
 
---static, auto-growing buffer allocation pattern.
-function glue.growbuffer(ctype)
-	local ctype = ffi.typeof(ctype or 'char[?]')
+--static, auto-growing buffer allocation pattern (ctype must be vla).
+function glue.buffer(ctype)
+	local vla = ffi.typeof(ctype)
 	local buf, len = nil, -1
-	return function(newlen)
-		if not newlen then
+	return function(minlen)
+		if minlen == false then
 			buf, len = nil, -1
-		elseif newlen > len then
-			len = glue.nextpow2(newlen)
-			buf = ctype(len)
+		elseif minlen > len then
+			len = glue.nextpow2(minlen)
+			buf = vla(len)
 		end
-		return buf, newlen
+		return buf, len
 	end
 end
 
-ffi.cdef[[
-	void* malloc (size_t size);
-	void  free   (void*);
-]]
-
-function glue.malloc(ctype, size)
-	if type(ctype) == 'number' then
-		ctype, size = 'char', ctype
+--like glue.buffer() but preserves data on reallocations
+--also returns minlen instead of capacity.
+function glue.dynarray(ctype)
+	local buffer = glue.buffer(ctype)
+	local elem_size = ffi.sizeof(ctype, 1)
+	local buf0, minlen0
+	return function(minlen)
+		local buf, len = buffer(minlen)
+		if buf ~= buf0 and buf ~= nil and buf0 ~= nil then
+			ffi.copy(buf, buf0, minlen0 * elem_size)
+		end
+		buf0, minlen0 = buf, minlen
+		return buf, minlen
 	end
-	local ctype = ffi.typeof(ctype or 'char')
-	local ctype = size
-		and ffi.typeof('$(&)[$]', ctype, size)
-		or ffi.typeof('$&', ctype)
-	local bytes = ffi.sizeof(ctype)
-	local data  = ffi.cast(ctype, ffi.C.malloc(bytes))
-	assert(data ~= nil, 'out of memory')
-	ffi.gc(data, glue.free)
-	return data
-end
-
-function glue.free(cdata)
-	ffi.gc(cdata, nil)
-	ffi.C.free(cdata)
 end
 
 local intptr_ct = ffi.typeof'intptr_t'
@@ -975,64 +1244,35 @@ if bit then
 		return bor(yes and mask or 0, band(over, bnot(mask)))
 	end
 
-end
-
--- Added by Sledmine 13/08/2019, v1
-function glue.childsByParent(object, desiredParent)
-    for parent,childs in pairs(object) do
-		if (parent == desiredParent) then
-			return childs
+	local function bor_bit(bits, k, mask, strict)
+		local b = bits[k]
+		if b then
+			return bit.bor(mask, b)
+		elseif strict then
+			error(string.format('invalid bit %s', k))
+		else
+			return mask
 		end
-		if (childs) then
-			local parentFoundInChildren = glue.childsByParent(childs, desiredParent)
-			if (parentFoundInChildren) then
-				return parentFoundInChildren
-			end
-		end
-    end
-    return nil
-end
-
--- Added by Sledmine 13/08/2019, v1
-function glue.parentByChild(object, desiredChild)
-    for parent,childs in pairs(object) do
-		if (childs[desiredChild]) then
-			return parent
-		end
-		if (childs) then
-			local childrenFoundInParent = glue.parentByChild(childs, desiredChild)
-			if (childrenFoundInParent) then
-				return childrenFoundInParent
-			end
-		end
-    end
-    return nil
-end
-
--- Chunks
--- Split a list/array into small parts of given size
--- Sledmine 27/02/2020
--- v1.0
-function glue.chunks(list, chunks)
-	local chunkCounter = 0
-	local chunk = {}
-	local chunkList = {}
-	-- Append chunks to the list in the specified amount of elements
-	for k,v in pairs(list) do
-		if (chunkCounter == chunks) then
-			glue.append(chunkList, chunk)
-			chunk = {}
-			chunkCounter = 0
-		end
-		glue.append(chunk, v)
-		chunkCounter = chunkCounter + 1
 	end
-	-- If there was a chunk that was not completed append it
-	if (chunkCounter ~= 0) then
-		glue.append(chunkList, chunk)
+	function glue.bor(flags, bits, strict)
+		local mask = 0
+		if type(flags) == 'number' then
+			return flags --passthrough
+		elseif type(flags) == 'string' then
+			for k in flags:gmatch'[^%s]+' do
+				mask = bor_bit(bits, k, mask, strict)
+			end
+		elseif type(flags) == 'table' then
+			for k,v in pairs(flags) do
+				k = type(k) == 'number' and v or k
+				mask = bor_bit(bits, k, mask, strict)
+			end
+		else
+			error'flags expected'
+		end
+		return mask
 	end
-	return chunkList
+
 end
 
 return glue
-

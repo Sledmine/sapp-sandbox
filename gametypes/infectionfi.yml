@@ -1,0 +1,28 @@
+# Infection Game Type File for Sandbox
+# Sledmine
+# https://github.com/Sledmine/Sandbox/tree/master/gametypes
+name: Infection
+description: Infection gametype for Forge Island
+version: 1
+baseGameType: ctf
+events:
+  OnDie:
+    red:
+      actions:
+      - name: switchBlue
+  OnPlayerSpawn:
+    general:
+      actions:
+      - name: eraseWeapons
+    red:
+      actions:
+      - name: addPlayerWeapon
+        params:
+          weaponPath: "[shm]\\halo_4\\weapons\\shotgun\\shotgun"
+          ammo: 16
+    blue:
+      actions:
+      - name: addPlayerWeapon
+        params:
+          weaponPath: "weapons\\plasma rifle\\plasma rifle"
+          ammo: 0
