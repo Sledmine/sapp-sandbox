@@ -1,0 +1,14 @@
+---
+name: DMR Slayer
+description: Unlimited ammo DMR - Slayer
+version: 1
+baseGameType: slayer
+events:
+  OnPlayerSpawn:
+    general:
+      actions:
+        - name: eraseWeapons
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\dmr\\dmr"
+            ammo: 999

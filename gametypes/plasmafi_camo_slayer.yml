@@ -1,0 +1,14 @@
+---
+name: Plasma Camo Slayer
+description: Plasma - Camo - Slayer
+version: 1
+baseGameType: slayer
+events:
+  OnPlayerSpawn:
+    general:
+      actions:
+        - name: eraseWeapons
+        - name: setPlayerCamo
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\plasma pistol\\plasma pistol"

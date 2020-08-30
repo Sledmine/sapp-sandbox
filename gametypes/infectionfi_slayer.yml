@@ -1,0 +1,33 @@
+name: Infection Slayer
+description: Survive the infection to win!
+version: 1
+baseGameType: team_slayer
+events:
+  OnPlayerDie:
+    red:
+      actions:
+        - name: switchBlue
+  OnPlayerSpawn:
+    general:
+      actions:
+        - name: eraseWeapons
+        - name: disableAllObjects
+          params:
+            team: 0
+    red:
+      actions:
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\shotgun\\shotgun"
+            ammo: 18
+    blue:
+      actions:
+        - name: setPlayerCamo
+        - name: setPlayerSpeed
+          params:
+            speed: 1.3
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\needler\\mp_needler"
+            ammo: 0
+            mag: 0

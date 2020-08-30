@@ -1,0 +1,15 @@
+---
+name: Rockets Camo Slayer
+description: Unlimited ammo Rockets - Camo - Slayer
+version: 1
+baseGameType: slayer
+events:
+  OnPlayerSpawn:
+    general:
+      actions:
+        - name: eraseWeapons
+        - name: setPlayerCamo
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\rocket launcher\\rocket launcher"
+            ammo: 999

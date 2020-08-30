@@ -19,11 +19,13 @@ local currentGameType
 local event = {
     tick = cb["EVENT_TICK"],
     playerSpawn = cb["EVENT_SPAWN"],
+    playerKill = cb["EVENT_KILL"],
     die = cb["EVENT_DIE"],
     command = cb["EVENT_COMMAND"],
     objectSpawn = cb["EVENT_OBJECT_SPAWN"],
     weaponPickUp = cb["EVENT_WEAPON_PICKUP"],
     alive = cb["EVENT_ALIVE"],
+    betray = cb["EVENT_BETRAY"]
 }
 
 local queueFunctions = {}
@@ -34,10 +36,12 @@ local queueFunctions = {}
 function OnScriptLoad()
     -- We can set up our event callbacks, like OnTick callback
     register_callback(event.command, "OnCommand")
-    register_callback(event.die, "OnDie")
+    register_callback(event.die, "OnPlayerDie")
     register_callback(event.playerSpawn, "OnPlayerSpawn")
+    register_callback(event.playerKill, "OnPlayerKill")
+    register_callback(event.playerKill, "OnPlayerKill")
     -- This event is kinda special, needs testing
-    register_callback(event.alive, "OnAlive")
+    register_callback(event.betray, "OnPlayerBetray")
 end
 
 --- Script cleanup
@@ -112,11 +116,11 @@ function eventDispatcher(playerIndex, eventName)
     end
 end
 
-function OnDie(playerIndex, causer)
+function OnPlayerDie(playerIndex, causer)
     local causer = tonumber(causer)
     -- Prevent some events from looping
     if (causer > -1) then
-        eventDispatcher(playerIndex, "OnDie")
+        eventDispatcher(playerIndex, "OnPlayerDie")
     end
 end
 
@@ -124,7 +128,15 @@ function OnPlayerSpawn(playerIndex)
     eventDispatcher(playerIndex, "OnPlayerSpawn")
 end
 
-function OnAlive(playerIndex)
+function OnPlayerKill(playerIndex)
+    eventDispatcher(playerIndex, "OnPlayerKill")
+end
+
+function OnPlayerBetray(playerIndex)
+    eventDispatcher(playerIndex, "OnPlayerBetray")
+end
+
+function OnPlayerAlive(playerIndex)
     local currentFunctions = queueFunctions[playerIndex]
     if (currentFunctions) then
         for actionIndex, action in pairs(currentFunctions) do
@@ -143,7 +155,7 @@ availableCommands = {
         if (gameTypeName) then
             loadGameType(gameTypeName)
         end
-    end,
+    end
 }
 
 availableActions = {
@@ -162,7 +174,6 @@ availableActions = {
     switchRed = function(playerIndex)
         execute_command("st " .. playerIndex .. " red")
     end,
-
     -- Weapon Actions
     eraseWeapons = function(playerIndex)
         execute_command("wdel " .. playerIndex)
@@ -172,7 +183,7 @@ availableActions = {
             local playerX = get_var(playerIndex, "$x")
             local playerY = get_var(playerIndex, "$y")
             local playerZ = get_var(playerIndex, "$z") + 1
-            local weaponId = spawn_object("weap", params.weaponPath, playerX, playerY, playerZ)
+            local weaponId = spawn_object("weap", params.weapon, playerX, playerY, playerZ)
             -- Check if this is the right way to check weapon spawn
             if (weaponId ~= 4294967295) then
                 assign_weapon(weaponId, playerIndex)
@@ -181,25 +192,53 @@ availableActions = {
                 -- Timer function can not use full function refence so we need a wrapper
                 queueFunctions[playerIndex] = {
                     function()
-                        availableActions.setPlayerWeaponAmmo(playerIndex, {
-                            ammo = params.ammo,
-                        })
-                    end,
+                        if (params.mag) then
+                            availableActions.setPlayerWeaponMag(playerIndex, {
+                                mag = params.mag
+                            })
+                        end
+                        if (params.ammo) then
+                            availableActions.setPlayerWeaponAmmo(playerIndex, {
+                                ammo = params.ammo
+                            })
+                        elseif (params.battery) then
+                            availableActions.setPlayerWeaponBattery(playerIndex,
+                                                                    {
+                                battery = params.battery
+                            })
+                        end
+                    end
                 }
             else
-                error("Weapon \"" .. params.weaponPath .. "\" can not be spawned!")
+                error("Weapon \"" .. params.weapon .. "\" can not be spawned!")
             end
         else
             error("addPlayerWeapon is being executed with no params!")
         end
     end,
-    --[[setPlayerWeaponBattery = function(playerIndex, params)
+    addPlayerWeaponRandom = function(playerIndex, params)
+        if (params.weapons) then
+            for weaponNumber, weaponRow in pairs(params.weapons) do
+
+            end
+        else
+            error("addPlayerWeaponRandom does not have weapons specified for!")
+        end
+    end,
+    setPlayerWeaponBattery = function(playerIndex, params)
         if (params) then
             execute_command("battery " .. playerIndex .. " " .. params.energy)
         else
             error("setPlayerWeaponBattery is being executed with no params!")
         end
-    end]]
+    end,
+    setPlayerWeaponMag = function(playerIndex, params)
+        if (params) then
+            execute_command("mag " .. playerIndex .. " " .. params.mag)
+        else
+            error("setPlayerWeaponBattery is being executed with no params!")
+        end
+    end,
     setPlayerWeaponAmmo = function(playerIndex, params)
         if (params) then
             print("Setting ammo to player: " .. playerIndex)
@@ -211,6 +250,26 @@ availableActions = {
             error("setPlayerWeaponAmmo is being executed with no params!")
         end
     end,
+    dropPlayerWeapon = function(playerIndex)
+        drop_weapon(playerIndex)
+    end,
+    -- Player properties
+    setPlayerCamo = function(playerIndex, params)
+        execute_command("camo " .. playerIndex)
+    end,
+    setPlayerSpeed = function(playerIndex, params)
+        execute_command("s " .. playerIndex .. " " .. params.speed)
+    end,
+    setPlayerHealth = function(playerIndex, params)
+        execute_command("hp " .. playerIndex .. " " .. params.health)
+    end,
+    -- Game actions
+    disableAllObjects = function(playerIndex, params)
+        execute_command("disable_all_objects " .. params.team .. " 1")
+    end,
+    disableAllVehicles = function(playerIndex, params)
+        execute_command("disable_all_vehicles " .. params.team .. " 1")
+    end
 }
 
 function loadGameType(gameTypeName)

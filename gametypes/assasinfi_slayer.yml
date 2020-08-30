@@ -1,0 +1,17 @@
+---
+name: Assasin BR Slayer
+description: BR - Slayer
+version: 1
+baseGameType: slayer
+events:
+  OnPlayerSpawn:
+    general:
+      actions:
+        - name: eraseWeapons
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\battle rifle\\battle rifle"
+  OnPlayerKill:
+    general:
+      actions:
+        - name: setPlayerCamo
