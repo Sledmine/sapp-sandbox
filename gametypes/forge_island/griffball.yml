@@ -1,0 +1,23 @@
+name: Griffball
+description: Griffball gametype
+version: 1
+baseGameType: ctfsetPlayerWeaponBattery
+events:
+  OnPlayerSpawn:
+    general:
+      actions:
+        - name: eraseWeapons
+        - name: addPlayerWeapon
+          params:
+            weapon: "[shm]\\halo_4\\weapons\\gravity hammer\\gravity hammer"
+            battery: 1
+  OnPlayerAlive:
+    general:
+      actions:
+        - name: setPlayerWeaponBattery
+          params:
+            battery: 100
+        - name: setPlayerNades
+          params:
+            frag: 0
+            plasma: 1

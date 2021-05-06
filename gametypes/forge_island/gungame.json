@@ -1,0 +1,30 @@
+{
+  "name": "Gungame",
+  "description": "Climb to the top weapon every kill!",
+  "version": 1,
+  "baseGameType": "slayer",
+  "events": {
+    "OnPlayerSpawn": {
+      "general": {
+        "actions": [
+          {
+            "name": "eraseWeapons"
+          },
+          {
+            "name": "addPlayerWeapons",
+            "params": {
+              "weapons": [
+                {
+                  "path": "[shm]\\halo_4\\weapons\\sniper rifle\\sniper rifle"
+                },
+                {
+                  "path": "[shm]\\halo_4\\weapons\\sniper rifle\\sniper rifle"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

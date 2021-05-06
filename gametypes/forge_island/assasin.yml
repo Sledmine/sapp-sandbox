@@ -1,6 +1,5 @@
----
-name: Assasin BR Slayer
-description: BR - Slayer
+name: Assasin
+description: Get camo with every kill!
 version: 1
 baseGameType: slayer
 events:
@@ -10,7 +9,7 @@ events:
         - name: eraseWeapons
         - name: addPlayerWeapon
           params:
-            weapon: "[shm]\\halo_4\\weapons\\battle rifle\\battle rifle"
+            weapon: "[shm]\\halo_4\\weapons\\sniper rifle\\sniper rifle"
   OnPlayerKill:
     general:
       actions:

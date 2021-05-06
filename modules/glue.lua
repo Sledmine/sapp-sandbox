@@ -126,6 +126,21 @@ function glue.merge(dt,...)
 	return dt
 end
 
+function glue.deepcopy(orig)
+	local orig_type = type(orig)
+    local copy
+    if orig_type == 'table' then
+        copy = {}
+        for orig_key, orig_value in next, orig, nil do
+            copy[glue.deepcopy(orig_key)] = glue.deepcopy(orig_value)
+        end
+        setmetatable(copy, glue.deepcopy(getmetatable(orig)))
+    else -- number, string, boolean, etc
+        copy = orig
+    end
+    return copy
+end
+
 --get the value of a table field, and if the field is not present in the
 --table, create it as an empty table, and return it.
 function glue.attr(t, k, v0)

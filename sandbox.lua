@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------
 -- Sandbox
--- Version 1.0
+-- Version 1.0.0
 -- Custom dynamic game type controller
 -----------------------------------------------------------------------
 -- Api version must be declared at the top
@@ -13,7 +13,7 @@ local yml = require "tinyyaml"
 local glue = require "glue"
 
 -- Local variables to the script
-local currentGameType
+local sandboxGameType
 
 -- Easier callback event dispatcher
 local event = {
@@ -39,8 +39,8 @@ function OnScriptLoad()
     register_callback(event.die, "OnPlayerDie")
     register_callback(event.playerSpawn, "OnPlayerSpawn")
     register_callback(event.playerKill, "OnPlayerKill")
-    register_callback(event.playerKill, "OnPlayerKill")
-    -- This event is kinda special, needs testing
+    -- This event is kinda special, it is being used as queue processor
+    register_callback(event.alive, "OnPlayerAlive")
     register_callback(event.betray, "OnPlayerBetray")
 end
 
@@ -76,9 +76,9 @@ function OnCommand(playerIndex, command, environment, rconPassword)
 end
 
 function eventDispatcher(playerIndex, eventName)
-    if (currentGameType) then
+    if (sandboxGameType) then
         local playerTeam = get_var(playerIndex, "$team")
-        local eventData = currentGameType.events[eventName]
+        local eventData = sandboxGameType.events[eventName]
         if (eventData) then
             local eventGeneralVariant = eventData["general"]
             if (eventGeneralVariant) then
@@ -137,6 +137,7 @@ function OnPlayerBetray(playerIndex)
 end
 
 function OnPlayerAlive(playerIndex)
+    eventDispatcher(playerIndex, "OnPlayerAlive")
     local currentFunctions = queueFunctions[playerIndex]
     if (currentFunctions) then
         for actionIndex, action in pairs(currentFunctions) do
@@ -216,7 +217,7 @@ availableActions = {
             error("addPlayerWeapon is being executed with no params!")
         end
     end,
-    addPlayerWeaponRandom = function(playerIndex, params)
+    addPlayerWeapons = function(playerIndex, params)
         if (params.weapons) then
             for weaponNumber, weaponRow in pairs(params.weapons) do
 
@@ -226,8 +227,8 @@ availableActions = {
         end
     end,
     setPlayerWeaponBattery = function(playerIndex, params)
-        if (params) then
-            execute_command("battery " .. playerIndex .. " " .. params.energy)
+        if (params and params.battery) then
+            execute_command("battery " .. playerIndex .. " " .. params.battery)
         else
             error("setPlayerWeaponBattery is being executed with no params!")
         end
@@ -236,7 +237,7 @@ availableActions = {
         if (params) then
             execute_command("mag " .. playerIndex .. " " .. params.mag)
         else
-            error("setPlayerWeaponBattery is being executed with no params!")
+            error("setPlayerWeaponMag is being executed with no params!")
         end
     end,
     setPlayerWeaponAmmo = function(playerIndex, params)
@@ -263,6 +264,9 @@ availableActions = {
     setPlayerHealth = function(playerIndex, params)
         execute_command("hp " .. playerIndex .. " " .. params.health)
     end,
+    setPlayerNades = function(playerIndex, params)
+        execute_command("nades " .. playerIndex .. " " .. params.frag .. " " .. params.plasma)
+    end,
     -- Game actions
     disableAllObjects = function(playerIndex, params)
         execute_command("disable_all_objects " .. params.team .. " 1")
@@ -274,24 +278,29 @@ availableActions = {
 
 function loadGameType(gameTypeName)
     if (gameTypeName) then
-        local gameTypeFileName = "gametypes\\" .. gameTypeName:gsub("\"", "") .. ".yml"
-        local gameTypeFile = glue.readfile(gameTypeFileName, "t")
-        if (gameTypeFile) then
-            currentGameType = yml.parse(gameTypeFile)
-            gprint("Game Type: " .. gameTypeName .. " has been loaded!")
-            local actualBaseGameType = get_var(0, "$mode"):lower():gsub(" ", "_")
-            print("ACTUAL:" .. actualBaseGameType)
-            local newBaseGameType = currentGameType.baseGameType
-            if (newBaseGameType and newBaseGameType ~= actualBaseGameType) then
-                local currentMapName = get_var(0, "$map")
-                execute_command("sv_map \"" .. currentMapName .. "\" " .. newBaseGameType)
+        local currentMapName =  get_var(0, "$map")
+        print(currentMapName)
+        local sandboxGameTypePath = "gametypes\\" .. currentMapName .. "\\" .. gameTypeName:gsub("\"", "") .. ".yml"
+        local sandboxGameTypeContent = glue.readfile(sandboxGameTypePath, "t")
+
+        if (sandboxGameTypeContent) then
+            sandboxGameType = yml.parse(sandboxGameTypeContent)
+            gprint("Sandbox Game Type: " .. gameTypeName .. " has been loaded!")
+        
+            local currentStockGameType = get_var(0, "$mode"):lower():gsub(" ", "_")
+            print("Current Stock Game Type:" .. currentStockGameType)
+            local newStockGameType = sandboxGameType.baseGameType
+            if (newStockGameType and newStockGameType ~= currentStockGameType) then
+                execute_command("sv_map \"" .. currentMapName .. "\" " .. newStockGameType)
             else
                 execute_command("sv_map_reset")
             end
-            print(inspect(currentGameType))
+            print(inspect(sandboxGameType))
+            return true
         else
-            error("Desired gametype not found in gametypes folder!")
+            print("Desired gametype not found in gametypes folder!")
+            return false
         end
     end
-    return nil
+    return false
 end

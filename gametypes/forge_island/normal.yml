@@ -1,6 +1,5 @@
----
-name: DMR Slayer
-description: Unlimited ammo DMR - Slayer
+name: Normal
+description: Normal spawn with basic weapons
 version: 1
 baseGameType: slayer
 events:
@@ -10,5 +9,4 @@ events:
         - name: eraseWeapons
         - name: addPlayerWeapon
           params:
-            weapon: "[shm]\\halo_4\\weapons\\dmr\\dmr"
-            ammo: 999
+            weapon: "[shm]\\halo_4\\weapons\\assault rifle\\assault rifle"
