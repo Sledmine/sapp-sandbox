@@ -1,7 +1,7 @@
 name: Griffball
 description: Griffball gametype
 version: 1
-baseGameType: ctfsetPlayerWeaponBattery
+baseGameType: ctf
 events:
   OnPlayerSpawn:
     general:

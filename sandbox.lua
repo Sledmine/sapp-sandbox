@@ -28,6 +28,8 @@ local event = {
     betray = cb["EVENT_BETRAY"]
 }
 
+local gametypesPath = "gametypes\\%s\\%s.yml"
+
 local queueFunctions = {}
 
 ------------------------ Sandbox setup ------------------------
@@ -53,7 +55,7 @@ function OnError(Message)
 end
 
 --- Global console print to every player in the game
-function gprint(message)
+function grprint(message)
     for playerIndex = 1, 16 do
         if (player_present(playerIndex)) then
             rprint(playerIndex, message)
@@ -242,7 +244,7 @@ availableActions = {
     end,
     setPlayerWeaponAmmo = function(playerIndex, params)
         if (params) then
-            print("Setting ammo to player: " .. playerIndex)
+            cprint("Setting ammo to player: " .. playerIndex)
             execute_command("ammo " .. playerIndex .. " " .. params.ammo)
             -- Set ammo as battery in case of a plasma/energy based weapon
             -- Check if is not causing conflicts with the weapons internal values
@@ -278,27 +280,30 @@ availableActions = {
 
 function loadGameType(gameTypeName)
     if (gameTypeName) then
+        cprint(("\nLoading Sandbox Gametype: %s"):format(gameTypeName))
         local currentMapName =  get_var(0, "$map")
-        print(currentMapName)
-        local sandboxGameTypePath = "gametypes\\" .. currentMapName .. "\\" .. gameTypeName:gsub("\"", "") .. ".yml"
-        local sandboxGameTypeContent = glue.readfile(sandboxGameTypePath, "t")
+        cprint("Map: " .. currentMapName)
+        local gametypePath = gametypesPath:format(currentMapName:gsub("_dev", ""), gameTypeName:gsub("\"", ""))
+        local ymlGametype = glue.readfile(gametypePath, "t")
+        if (ymlGametype) then
+            -- Load gametype locally
+            sandboxGameType = yml.parse(ymlGametype)
+            grprint("Sandbox Game Type: " .. gameTypeName .. " has been loaded!")
 
-        if (sandboxGameTypeContent) then
-            sandboxGameType = yml.parse(sandboxGameTypeContent)
-            gprint("Sandbox Game Type: " .. gameTypeName .. " has been loaded!")
-        
+            -- Current stock gametype formalization
             local currentStockGameType = get_var(0, "$mode"):lower():gsub(" ", "_")
-            print("Current Stock Game Type:" .. currentStockGameType)
+            cprint("Current Stock Game Type: " .. currentStockGameType .. "\n")
+
+            -- Change current map and gametype if sandbox gametype requires different stock gametype
             local newStockGameType = sandboxGameType.baseGameType
             if (newStockGameType and newStockGameType ~= currentStockGameType) then
                 execute_command("sv_map \"" .. currentMapName .. "\" " .. newStockGameType)
             else
                 execute_command("sv_map_reset")
             end
-            print(inspect(sandboxGameType))
             return true
         else
-            print("Desired gametype not found in gametypes folder!")
+            cprint("Desired gametype not found in gametypes folder!")
             return false
         end
     end
