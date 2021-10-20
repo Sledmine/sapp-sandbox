@@ -2,7 +2,7 @@
     "name": "Sandbox",
     "target": "lua51",
     "include": [
-        "\\modules"
+        "modules\\"
     ],
     "modules": [
         "glue",

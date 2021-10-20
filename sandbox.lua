@@ -36,6 +36,7 @@ local queueFunctions = {}
 
 --- Script initialization code
 function OnScriptLoad()
+    math.randomseed(os.time())
     -- We can set up our event callbacks, like OnTick callback
     register_callback(event.command, "OnCommand")
     register_callback(event.die, "OnPlayerDie")
@@ -221,11 +222,22 @@ availableActions = {
     end,
     addPlayerWeapons = function(playerIndex, params)
         if (params.weapons) then
-            for weaponNumber, weaponRow in pairs(params.weapons) do
-
+            --for weaponNumber, weaponRow in pairs(params.weapons) do
+            --    
+            --end
+            local randomWeaponIndex = math.random(1, #params.weapons)
+            local playerX = get_var(playerIndex, "$x")
+            local playerY = get_var(playerIndex, "$y")
+            local playerZ = get_var(playerIndex, "$z") + 1
+            local weaponId = spawn_object("weap", params.weapons[randomWeaponIndex].path, playerX, playerY, playerZ)
+            -- Check if this is the right way to check weapon spawn
+            if (weaponId ~= 4294967295) then
+                assign_weapon(weaponId, playerIndex)
+            else
+                error("Weapon \"" .. params.weapon .. "\" can not be spawned!")
             end
         else
-            error("addPlayerWeaponRandom does not have weapons specified for!")
+            error("addPlayerWeapons does not have weapons specified for!")
         end
     end,
     setPlayerWeaponBattery = function(playerIndex, params)
@@ -280,7 +292,7 @@ availableActions = {
 
 function loadGameType(gameTypeName)
     if (gameTypeName) then
-        cprint(("\nLoading Sandbox Gametype: %s"):format(gameTypeName))
+        cprint("\nLoading Sandbox Gametype: " .. gameTypeName)
         local currentMapName =  get_var(0, "$map")
         cprint("Map: " .. currentMapName)
         local gametypePath = gametypesPath:format(currentMapName:gsub("_dev", ""), gameTypeName:gsub("\"", ""))
