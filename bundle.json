@@ -2,7 +2,7 @@
     "name": "Sandbox",
     "target": "lua51",
     "include": [
-        "modules\\"
+        "modules/"
     ],
     "modules": [
         "glue",
@@ -10,5 +10,5 @@
         "tinyyaml"
     ],
     "main": "sandbox",
-    "output": "dist\\sandbox.lua"
+    "output": "dist/sandbox.lua"
 }

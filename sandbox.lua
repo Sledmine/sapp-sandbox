@@ -11,9 +11,29 @@ api_version = "1.12.0.0"
 local inspect = require "inspect"
 local yml = require "tinyyaml"
 local glue = require "glue"
+local split = glue.string.split
+local shift = glue.shift
+local unpack = glue.unpack
 
--- Local variables to the script
-local sandboxGameType
+---@class events
+---@field starts string[]
+---@field spawns string[]
+---@field dies string[]
+
+---@class subjects
+---@field game events
+---@field player events
+---@field gametype events
+
+---@class sandboxgametype
+---@field name string
+---@field description string
+---@field version number
+---@field like string
+---@field when subjects
+
+---@type sandboxgametype
+local sandboxGame
 
 -- Easier callback event dispatcher
 local event = {
@@ -28,11 +48,20 @@ local event = {
     betray = cb["EVENT_BETRAY"]
 }
 
-local gametypesPath = "gametypes\\%s\\%s.yml"
+local gametypesPath = "gametypes/%s/%s.yml"
 
 local queueFunctions = {}
 
 ------------------------ Sandbox setup ------------------------
+
+--- Get if a value equals a null value for game
+---@return boolean
+local function isNull(value)
+    if (value == 0xFF or value == 0xFFFF or value == 0xFFFFFFFF or value == nil) then
+        return true
+    end
+    return false
+end
 
 --- Script initialization code
 function OnScriptLoad()
@@ -67,53 +96,30 @@ end
 ------------------------ Event handlers ------------------------
 
 function OnCommand(playerIndex, command, environment, rconPassword)
-    local fullCommand = glue.string.split(command, " ")
+    local fullCommand = split(command, " ")
     local command = fullCommand[1]
     -- Erase main command from the list
-    local commandArgs = glue.shift(fullCommand, 1, -1)
-    local sandboxCommand = availableCommands[command]
+    local commandArgs = shift(fullCommand, 1, -1)
+    local sandboxCommand = SandboxCommands[command]
     if (sandboxCommand) then
         sandboxCommand(playerIndex, commandArgs)
-        rprint(playerIndex, "Sandbox command executed.")
+        return false
     end
 end
 
-function eventDispatcher(playerIndex, eventName)
-    if (sandboxGameType) then
-        local playerTeam = get_var(playerIndex, "$team")
-        local eventData = sandboxGameType.events[eventName]
-        if (eventData) then
-            local eventGeneralVariant = eventData["general"]
-            if (eventGeneralVariant) then
-                generalActions = eventGeneralVariant.actions
-                if (generalActions) then
-                    for actionPriority, action in pairs(generalActions) do
-                        local actionName = action.name
-                        local actionParams = action.params
-                        local eventAction = availableActions[actionName]
-                        if (eventAction) then
-                            eventAction(playerIndex, actionParams)
-                        else
-                            error("There is an event with no actions in the current gametype!")
-                        end
-                    end
-                end
-            end
-            local eventTeamVariant = eventData[playerTeam]
-            if (eventTeamVariant) then
-                teamBasedActions = eventTeamVariant.actions
-                if (teamBasedActions) then
-                    for actionPriority, action in pairs(teamBasedActions) do
-                        local actionName = action.name
-                        local actionParams = action.params
-                        local eventAction = availableActions[actionName]
-                        if (eventAction) then
-                            eventAction(playerIndex, actionParams)
-                        else
-                            error("There is an event with no actions in the current gametype!")
-                        end
-                    end
-                end
+local function parseToyString(toystring)
+    local functiondef = split(toystring, " -> ")
+    return functiondef[1], shift(functiondef, 1, -1)
+end
+
+local function dispatchToy(event, playerIndex)
+    for _, toystring in pairs(event) do
+        local action, args = parseToyString(toystring)
+        for toyname, toyfunc in pairs(SandboxToys) do
+            if toyname == action then
+                print(action)
+                print(inspect(args))
+                toyfunc(playerIndex, unpack(args))
             end
         end
     end
@@ -123,24 +129,23 @@ function OnPlayerDie(playerIndex, causer)
     local causer = tonumber(causer)
     -- Prevent some events from looping
     if (causer > -1) then
-        eventDispatcher(playerIndex, "OnPlayerDie")
+        dispatchToy(sandboxGame.when.player.dies, playerIndex)
     end
 end
 
 function OnPlayerSpawn(playerIndex)
-    eventDispatcher(playerIndex, "OnPlayerSpawn")
+    dispatchToy(sandboxGame.when.player.spawns, playerIndex)
 end
 
 function OnPlayerKill(playerIndex)
-    eventDispatcher(playerIndex, "OnPlayerKill")
+
 end
 
 function OnPlayerBetray(playerIndex)
-    eventDispatcher(playerIndex, "OnPlayerBetray")
+    -- whenDispatcher(playerIndex, "player_betrays")
 end
 
 function OnPlayerAlive(playerIndex)
-    eventDispatcher(playerIndex, "OnPlayerAlive")
     local currentFunctions = queueFunctions[playerIndex]
     if (currentFunctions) then
         for actionIndex, action in pairs(currentFunctions) do
@@ -150,21 +155,25 @@ function OnPlayerAlive(playerIndex)
     end
 end
 
------------------------- Sandbox functions ------------------------
-
-availableCommands = {
-    -- Load gametype command
-    ["lg"] = function(playerIndex, commandArgs)
+SandboxCommands = {
+    load_gametype = function(playerIndex, commandArgs)
         local gameTypeName = commandArgs[1]
         if (gameTypeName) then
             loadGameType(gameTypeName)
         end
+    end,
+    unload_gametype = function(playerIndex, commandArgs)
+        sandboxGame = nil
+        say_all("Sandbox gametype was unloaded!")
     end
 }
+-- Aliases
+SandboxCommands.lg = SandboxCommands.load_gametype
+SandboxCommands.ug = SandboxCommands.unload_gametype
 
-availableActions = {
+SandboxToys = {
     -- Team Actions
-    swapTeam = function(playerIndex)
+    ["swap team"] = function(playerIndex)
         local playerTeam = get_var(playerIndex, "$team")
         if (playerTeam == "red") then
             execute_command("st " .. playerIndex .. " blue")
@@ -172,144 +181,143 @@ availableActions = {
             execute_command("st " .. playerIndex .. " red")
         end
     end,
-    switchBlue = function(playerIndex)
-        execute_command("st " .. playerIndex .. " blue")
-    end,
-    switchRed = function(playerIndex)
-        execute_command("st " .. playerIndex .. " red")
+    ["switch team"] = function(playerIndex, team)
+        execute_command("st " .. playerIndex .. " " .. team)
     end,
     -- Weapon Actions
-    eraseWeapons = function(playerIndex)
+    ["erase weapons"] = function(playerIndex)
         execute_command("wdel " .. playerIndex)
     end,
-    addPlayerWeapon = function(playerIndex, params)
-        if (params) then
+    ["add weapon"] = function(playerIndex, weaponTagPath)
+        if (weaponTagPath) then
             local playerX = get_var(playerIndex, "$x")
             local playerY = get_var(playerIndex, "$y")
             local playerZ = get_var(playerIndex, "$z") + 1
-            local weaponId = spawn_object("weap", params.weapon, playerX, playerY, playerZ)
-            -- Check if this is the right way to check weapon spawn
-            if (weaponId ~= 4294967295) then
+            local weaponId = spawn_object("weap", weaponTagPath, playerX, playerY, playerZ)
+            -- Check if this is the right way to chweck weapon spawn
+            if (not isNull(weaponId)) then
                 assign_weapon(weaponId, playerIndex)
-                -- A timer is needed to set weapon ammo in the same function sentence
-                -- Because the player does not have the weapon loaded at setting the ammo amount
-                -- Timer function can not use full function refence so we need a wrapper
-                queueFunctions[playerIndex] = {
-                    function()
-                        if (params.mag) then
-                            availableActions.setPlayerWeaponMag(playerIndex, {
-                                mag = params.mag
-                            })
-                        end
-                        if (params.ammo) then
-                            availableActions.setPlayerWeaponAmmo(playerIndex, {
-                                ammo = params.ammo
-                            })
-                        elseif (params.battery) then
-                            availableActions.setPlayerWeaponBattery(playerIndex,
-                                                                    {
-                                battery = params.battery
-                            })
-                        end
+            else
+                local path = split(weaponTagPath, "\\")
+                local inferedWeaponTagPath = weaponTagPath .. "\\" .. path[#path]
+                weaponId = spawn_object("weap", inferedWeaponTagPath, playerX, playerY, playerZ)
+                if (not isNull(weaponId)) then
+                    assign_weapon(weaponId, playerIndex)
+                else
+                    error("Weapon \"" .. weaponTagPath .. "\" can not be spawned!")
+                end
+            end
+        else
+            error("add weapon is being executed with no params!")
+        end
+    end,
+    ["enter vehicle"] = function(playerIndex, vehicleTagPath, seat, overloadedSeat)
+        if (vehicleTagPath) then
+            local seat = tonumber(seat or "0")
+            local playerX = get_var(playerIndex, "$x")
+            local playerY = get_var(playerIndex, "$y")
+            local playerZ = get_var(playerIndex, "$z") + 1
+            local vehicleId = spawn_object("vehi", vehicleTagPath, playerX, playerY, playerZ)
+            -- Check if this is the right way to check weapon spawn
+            if (not isNull(vehicleId)) then
+                enter_vehicle(vehicleId, playerIndex, seat)
+                if (overloadedSeat) then
+                    enter_vehicle(vehicleId, playerIndex, tonumber(overloadedSeat))
+                end
+            else
+                local path = split(vehicleTagPath, "\\")
+                local inferedVehicleTagPath = vehicleTagPath .. "\\" .. path[#path]
+                vehicleId = spawn_object("vehi", inferedVehicleTagPath, playerX, playerY, playerZ)
+                if (not isNull(vehicleId)) then
+                    enter_vehicle(vehicleId, playerIndex, seat)
+                    if (overloadedSeat) then
+                        enter_vehicle(vehicleId, playerIndex, tonumber(overloadedSeat))
                     end
-                }
-            else
-                error("Weapon \"" .. params.weapon .. "\" can not be spawned!")
+                else
+                    error("Vehicle \"" .. vehicleTagPath .. "\" can not be spawned!")
+                end
             end
         else
-            error("addPlayerWeapon is being executed with no params!")
+            error("enter vehicle is being executed with no params!")
         end
     end,
-    addPlayerWeapons = function(playerIndex, params)
-        if (params.weapons) then
-            --for weaponNumber, weaponRow in pairs(params.weapons) do
-            --    
-            --end
-            local randomWeaponIndex = math.random(1, #params.weapons)
-            local playerX = get_var(playerIndex, "$x")
-            local playerY = get_var(playerIndex, "$y")
-            local playerZ = get_var(playerIndex, "$z") + 1
-            local weaponId = spawn_object("weap", params.weapons[randomWeaponIndex].path, playerX, playerY, playerZ)
-            -- Check if this is the right way to check weapon spawn
-            if (weaponId ~= 4294967295) then
-                assign_weapon(weaponId, playerIndex)
-            else
-                error("Weapon \"" .. params.weapon .. "\" can not be spawned!")
-            end
+    ["set weapon battery"] = function(playerIndex, battery)
+        if (battery) then
+            execute_command("battery " .. playerIndex .. " " .. battery)
         else
-            error("addPlayerWeapons does not have weapons specified for!")
+            error("battery is being executed with no params!")
         end
     end,
-    setPlayerWeaponBattery = function(playerIndex, params)
-        if (params and params.battery) then
-            execute_command("battery " .. playerIndex .. " " .. params.battery)
+    ["set weapon mag"] = function(playerIndex, mag)
+        if (mag) then
+            execute_command("mag " .. playerIndex .. " " .. mag)
         else
-            error("setPlayerWeaponBattery is being executed with no params!")
+            error("set weapon mag is being executed with no params!")
         end
     end,
-    setPlayerWeaponMag = function(playerIndex, params)
-        if (params) then
-            execute_command("mag " .. playerIndex .. " " .. params.mag)
-        else
-            error("setPlayerWeaponMag is being executed with no params!")
-        end
-    end,
-    setPlayerWeaponAmmo = function(playerIndex, params)
-        if (params) then
-            cprint("Setting ammo to player: " .. playerIndex)
-            execute_command("ammo " .. playerIndex .. " " .. params.ammo)
+    
+    ["set weapon ammo"] = function(playerIndex, ammo)
+        if (ammo) then
+            execute_command("ammo " .. playerIndex .. " " .. ammo)
             -- Set ammo as battery in case of a plasma/energy based weapon
             -- Check if is not causing conflicts with the weapons internal values
             -- execute_command("battery " .. playerIndex .. " " .. params.ammo)
         else
-            error("setPlayerWeaponAmmo is being executed with no params!")
+            error("set weapon ammo is being executed with no params!")
         end
     end,
-    dropPlayerWeapon = function(playerIndex)
+    ["drop weapon"] = function(playerIndex)
         drop_weapon(playerIndex)
     end,
     -- Player properties
-    setPlayerCamo = function(playerIndex, params)
+    ["set camo"] = function(playerIndex)
         execute_command("camo " .. playerIndex)
     end,
-    setPlayerSpeed = function(playerIndex, params)
-        execute_command("s " .. playerIndex .. " " .. params.speed)
+    ["set speed"] = function(playerIndex, speed)
+        execute_command("s " .. playerIndex .. " " .. speed)
     end,
-    setPlayerHealth = function(playerIndex, params)
-        execute_command("hp " .. playerIndex .. " " .. params.health)
+    ["set health"] = function(playerIndex, health)
+        execute_command("hp " .. playerIndex .. " " .. health)
     end,
-    setPlayerNades = function(playerIndex, params)
-        execute_command("nades " .. playerIndex .. " " .. params.frag .. " " .. params.plasma)
+    ["set nades"] = function(playerIndex, fragmentation, plasma)
+        execute_command("nades " .. playerIndex .. " " .. fragmentation .. " " .. plasma)
     end,
     -- Game actions
-    disableAllObjects = function(playerIndex, params)
-        execute_command("disable_all_objects " .. params.team .. " 1")
+    ["disable objects"] = function(playerIndex, team)
+        execute_command("disable_all_objects " .. team .. " 1")
     end,
-    disableAllVehicles = function(playerIndex, params)
-        execute_command("disable_all_vehicles " .. params.team .. " 1")
+    ["disable vehicles"] = function(playerIndex, team)
+        execute_command("disable_all_vehicles " .. team .. " 1")
+    end,
+    ["say all"] = function(playerIndex, message)
+        say_all(message)
+    end,
+    ["say"] = function(playerIndex, message)
+        say(playerIndex, message)
     end
 }
 
 function loadGameType(gameTypeName)
     if (gameTypeName) then
-        cprint("\nLoading Sandbox Gametype: " .. gameTypeName)
-        local currentMapName =  get_var(0, "$map")
+        cprint("\nLoading gametype: " .. gameTypeName)
+        local currentMapName = get_var(0, "$map")
         cprint("Map: " .. currentMapName)
-        local gametypePath = gametypesPath:format(currentMapName:gsub("_dev", ""), gameTypeName:gsub("\"", ""))
-        local ymlGametype = glue.readfile(gametypePath, "t")
-        if (ymlGametype) then
+        local gametypePath = gametypesPath:format(currentMapName:gsub("_dev", ""),
+                                                  gameTypeName:gsub("\"", ""))
+        local ymlSand = glue.readfile(gametypePath, "t")
+        if (ymlSand) then
             -- Load gametype locally
-            sandboxGameType = yml.parse(ymlGametype)
-            grprint("Sandbox Game Type: " .. gameTypeName .. " has been loaded!")
+            sandboxGame = yml.parse(ymlSand)
+            grprint("Gametype " .. gameTypeName .. " has been loaded!")
 
             -- Current stock gametype formalization
-            local currentStockGameType = get_var(0, "$mode"):lower():gsub(" ", "_")
-            cprint("Current Stock Game Type: " .. currentStockGameType .. "\n")
+            local currentGametypeLike = get_var(0, "$mode"):lower():gsub(" ", "_")
+            cprint("Gametype like: " .. currentGametypeLike .. "\n")
 
-            -- Change current map and gametype if sandbox gametype requires different stock gametype
-            local newStockGameType = sandboxGameType.baseGameType
-            if (newStockGameType and newStockGameType ~= currentStockGameType) then
-                execute_command("sv_map \"" .. currentMapName .. "\" " .. newStockGameType)
+            -- Change stock gametype if sandbox gametype is based on another stock gametype
+            local newGametypeLike = sandboxGame.like
+            if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
+                execute_command("sv_map \"" .. currentMapName .. "\" " .. newGametypeLike)
             else
                 execute_command("sv_map_reset")
             end

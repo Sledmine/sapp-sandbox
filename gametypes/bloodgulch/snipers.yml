@@ -1,0 +1,12 @@
+name: Snipers
+description: Everyone starts with snipers!
+version: 1
+like: team_slayer
+when:
+  player:
+    spawns:
+      - erase weapons
+      - add weapon -> weapons\sniper rifle
+    dies:
+      - set speed -> 3
+      - say -> Noob!
