@@ -1,0 +1,12 @@
+name: Hammer Time
+description: Everyone starts with hammers!
+version: 1
+like: ctf
+when:
+  player:
+    spawns:
+      - erase weapons
+      - add weapon -> [shm]\halo_4\weapons\gravity hammer
+  gametype:
+    starts: 
+      - disable objects -> 0

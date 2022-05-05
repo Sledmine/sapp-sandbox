@@ -1,0 +1,11 @@
+name: SWAT
+description: No body moves, aim to the head and kill!
+version: 1
+like: ctf
+when:
+  player:
+    spawns:
+      - erase weapons
+      - add weapon -> keymind\the_flood\weapons\pistol\magnum\magnum_m6d
+      - add weapon -> keymind\the_flood\weapons\rifle\br\br_55h
+      - set health -> 0.1

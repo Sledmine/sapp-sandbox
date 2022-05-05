@@ -1,0 +1,9 @@
+name: Heavy
+description: Everyone starts with snipers!
+version: 1
+like: ctf
+when:
+  player:
+    spawns:
+      - erase weapons
+      - add weapon -> keymind\the_flood\weapons\rifle\shotgun_m90

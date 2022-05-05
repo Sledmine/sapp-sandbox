@@ -1,3 +1,14 @@
+<html>
+    <p align="center">
+        <img width="250px" src="img/sandbox-logo.png"/>
+    </p>
+    <h1 align="center">Sandbox</h1>
+    <p align="center">
+       Dynamic gametype controller for Halo Custom Edition
+    </p>
+</html>
+
+
 # Sandbox
 Sandbox is custom dynamic gametype controller for SAPP, instead of using the builtin "events"
 system from SAPP, this  project provides different actions called "toys" and precreated events ready
