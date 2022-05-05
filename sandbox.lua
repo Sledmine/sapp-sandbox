@@ -319,6 +319,7 @@ function loadGameType(gameTypeName)
             if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
                 execute_command("sv_map \"" .. currentMapName .. "\" " .. newGametypeLike)
             else
+                dispatchToy(sandboxGame.when.gametype.starts)
                 execute_command("sv_map_reset")
             end
             return true
