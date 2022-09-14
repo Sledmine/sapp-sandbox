@@ -1,13 +1,14 @@
 {
     "name": "Sandbox",
-    "target": "lua51",
+    "target": "lua5.1",
     "include": [
         "modules/"
     ],
     "modules": [
         "glue",
         "inspect",
-        "tinyyaml"
+        "tinyyaml",
+        "blam"
     ],
     "main": "sandbox",
     "output": "dist/sandbox.lua"

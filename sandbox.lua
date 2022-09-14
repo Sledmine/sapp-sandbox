@@ -14,6 +14,8 @@ local glue = require "glue"
 local split = glue.string.split
 local shift = glue.shift
 local unpack = glue.unpack
+local blam = require "blam"
+local isNull = blam.isNull
 
 ---@class events
 ---@field starts string[]
@@ -34,6 +36,8 @@ local unpack = glue.unpack
 
 ---@type sandboxgametype
 local sandboxGame
+---@type tag[]
+local usableWeaponTags = {}
 
 -- Easier callback event dispatcher
 local event = {
@@ -45,7 +49,9 @@ local event = {
     objectSpawn = cb["EVENT_OBJECT_SPAWN"],
     weaponPickUp = cb["EVENT_WEAPON_PICKUP"],
     alive = cb["EVENT_ALIVE"],
-    betray = cb["EVENT_BETRAY"]
+    betray = cb["EVENT_BETRAY"],
+    gameStart = cb["EVENT_GAME_START"],
+    gameEnd = cb["EVENT_GAME_END"]
 }
 
 local gametypesPath = "gametypes/%s/%s.yml"
@@ -53,15 +59,6 @@ local gametypesPath = "gametypes/%s/%s.yml"
 local queueFunctions = {}
 
 ------------------------ Sandbox setup ------------------------
-
---- Get if a value equals a null value for game
----@return boolean
-local function isNull(value)
-    if (value == 0xFF or value == 0xFFFF or value == 0xFFFFFFFF or value == nil) then
-        return true
-    end
-    return false
-end
 
 --- Script initialization code
 function OnScriptLoad()
@@ -74,6 +71,36 @@ function OnScriptLoad()
     -- This event is kinda special, it is being used as queue processor
     register_callback(event.alive, "OnPlayerAlive")
     register_callback(event.betray, "OnPlayerBetray")
+    register_callback(event.betray, "OnPlayerBetray")
+    register_callback(event.gameStart, "OnGameStart")
+    register_callback(event.gameEnd, "OnGameEnd")
+    local defaultFile = glue.readfile("default.yml", "t")
+    if not defaultFile then
+        cprint("Error at loading default.yml from sandbox.lua")
+    else
+        local default = yml.parse(defaultFile) or {}
+        if default.game_type then
+            loadGameType(default.game_type)
+        end
+    end
+end
+
+function OnGameStart()
+    -- Find  weapon tags
+    local weaponTags = blam.findTagsList("", blam.tagClasses.weapon)
+    for _, tag in pairs(weaponTags) do
+        local weaponTag = blam.weaponTag(tag.id)
+        -- Check if weapon has a model and does not contain words, skull, flag, gravity, etc.
+        if not isNull(weaponTag.model) and not (tag.path:find("skull") or tag.path:find("flag") or tag.path:find("gravity")) then
+            glue.append(usableWeaponTags, tag)
+        end
+    end
+end
+
+function OnGameEnd()
+    -- Clear weapon tags
+    usableWeaponTags = {}
+    --execute_command("disable_all_objects 0 0")
 end
 
 --- Script cleanup
@@ -211,6 +238,24 @@ SandboxToys = {
             error("add weapon is being executed with no params!")
         end
     end,
+    ["add random weapon"] = function(playerIndex)
+        math.randomseed(os.time() + playerIndex)
+        local weaponTagPath = usableWeaponTags[math.random(1, #usableWeaponTags)].path
+        if (weaponTagPath) then
+            local playerX = get_var(playerIndex, "$x")
+            local playerY = get_var(playerIndex, "$y")
+            local playerZ = get_var(playerIndex, "$z") + 1
+            local weaponObjectId = spawn_object("weap", weaponTagPath, playerX, playerY, playerZ)
+            -- Check if this is the right way to chweck weapon spawn
+            if (not isNull(weaponObjectId)) then
+                assign_weapon(weaponObjectId, playerIndex)
+            else
+                error("Weapon \"" .. weaponTagPath .. "\" can not be spawned!")
+            end
+        else
+            error("add random weapon does not have any usable weapon tags!")
+        end
+    end,
     ["enter vehicle"] = function(playerIndex, vehicleTagPath, seat, overloadedSeat)
         if (vehicleTagPath) then
             local seat = tonumber(seat or "0")
@@ -255,7 +300,7 @@ SandboxToys = {
             error("set weapon mag is being executed with no params!")
         end
     end,
-    
+
     ["set weapon ammo"] = function(playerIndex, ammo)
         if (ammo) then
             execute_command("ammo " .. playerIndex .. " " .. ammo)
@@ -299,12 +344,17 @@ SandboxToys = {
 
 function loadGameType(gameTypeName)
     if (gameTypeName) then
+        local gameTypeName = gameTypeName:gsub("\"", "")
         cprint("\nLoading gametype: " .. gameTypeName)
-        local currentMapName = get_var(0, "$map")
+
+        local currentMapName = get_var(0, "$map"):gsub("_dev", "")
         cprint("Map: " .. currentMapName)
-        local gametypePath = gametypesPath:format(currentMapName:gsub("_dev", ""),
-                                                  gameTypeName:gsub("\"", ""))
-        local ymlSand = glue.readfile(gametypePath, "t")
+
+        local gametypeDefPath = gametypesPath:format(currentMapName, gameTypeName)
+        if not glue.canopen(gametypeDefPath) then
+            gametypeDefPath = gametypesPath:format("global", gameTypeName)
+        end
+        local ymlSand = glue.readfile(gametypeDefPath, "t")
         if (ymlSand) then
             -- Load gametype locally
             sandboxGame = yml.parse(ymlSand)
@@ -316,12 +366,13 @@ function loadGameType(gameTypeName)
 
             -- Change stock gametype if sandbox gametype is based on another stock gametype
             local newGametypeLike = sandboxGame.like
-            if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
-                execute_command("sv_map \"" .. currentMapName .. "\" " .. newGametypeLike)
-            else
-                dispatchToy(sandboxGame.when.gametype.starts)
-                execute_command("sv_map_reset")
-            end
+            dispatchToy(sandboxGame.when.gametype.starts)
+            --if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
+            --    execute_command("sv_map \"" .. currentMapName .. "\" " .. newGametypeLike)
+            --else
+            --    dispatchToy(sandboxGame.when.gametype.starts)
+            --    execute_command("sv_map_reset")
+            --end
             return true
         else
             cprint("Desired gametype not found in gametypes folder!")

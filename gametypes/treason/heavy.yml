@@ -1,7 +1,7 @@
 name: Heavy
-description: Everyone starts with snipers!
+description: Everyone starts with shotguns!
 version: 1
-like: ctf
+like: team_slayer
 when:
   player:
     spawns:

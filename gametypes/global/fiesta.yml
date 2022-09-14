@@ -1,0 +1,9 @@
+name: Fiesta
+description: IT'S A FIESTA, LOL!
+version: 1
+like: slayer
+when:
+  player:
+    spawns:
+      - erase weapons
+      - add random weapon
