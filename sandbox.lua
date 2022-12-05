@@ -91,7 +91,9 @@ function OnGameStart()
     for _, tag in pairs(weaponTags) do
         local weaponTag = blam.weaponTag(tag.id)
         -- Check if weapon has a model and does not contain words, skull, flag, gravity, etc.
-        if not isNull(weaponTag.model) and not (tag.path:find("skull") or tag.path:find("flag") or tag.path:find("gravity")) then
+        if not isNull(weaponTag.model) and
+            not (tag.path:find("skull") or tag.path:find("ball") or tag.path:find("flag") or
+                tag.path:find("gravity")) then
             glue.append(usableWeaponTags, tag)
         end
     end
@@ -100,7 +102,7 @@ end
 function OnGameEnd()
     -- Clear weapon tags
     usableWeaponTags = {}
-    --execute_command("disable_all_objects 0 0")
+    -- execute_command("disable_all_objects 0 0")
 end
 
 --- Script cleanup
@@ -367,12 +369,12 @@ function loadGameType(gameTypeName)
             -- Change stock gametype if sandbox gametype is based on another stock gametype
             local newGametypeLike = sandboxGame.like
             dispatchToy(sandboxGame.when.gametype.starts)
-            --if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
+            -- if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
             --    execute_command("sv_map \"" .. currentMapName .. "\" " .. newGametypeLike)
-            --else
+            -- else
             --    dispatchToy(sandboxGame.when.gametype.starts)
             --    execute_command("sv_map_reset")
-            --end
+            -- end
             return true
         else
             cprint("Desired gametype not found in gametypes folder!")
