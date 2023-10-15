@@ -1,21 +1,19 @@
 -----------------------------------------------------------------------
 -- Sandbox
--- Version 1.0.0
 -- Custom dynamic game type controller
 -----------------------------------------------------------------------
--- Api version must be declared at the top
--- It helps lua-blam to detect if the script is made for SAPP or Chimera
 api_version = "1.12.0.0"
 
 -- Lua libraries
 local inspect = require "inspect"
 local yml = require "tinyyaml"
-local glue = require "glue"
-local split = glue.string.split
-local shift = glue.shift
-local unpack = glue.unpack
 local blam = require "blam"
 local isNull = blam.isNull
+local luna = require "luna"
+local split = luna.string.split
+local glue = require "glue"
+local shift = glue.shift
+local unpack = glue.unpack
 
 ---@class events
 ---@field starts string[]
@@ -34,7 +32,7 @@ local isNull = blam.isNull
 ---@field like string
 ---@field when subjects
 
----@type sandboxgametype
+---@type sandboxgametype?
 local sandboxGame
 ---@type tag[]
 local usableWeaponTags = {}
@@ -74,16 +72,18 @@ function OnScriptLoad()
     register_callback(event.betray, "OnPlayerBetray")
     register_callback(event.gameStart, "OnGameStart")
     register_callback(event.gameEnd, "OnGameEnd")
-    local defaultFile = glue.readfile("default.yml", "t")
-    if not defaultFile then
-        cprint("Error at loading default.yml from sandbox.lua")
+    local sandboxCfg = luna.file.read("sandboxcfg.yml")
+    if not sandboxCfg then
+        cprint("Error at loading sandboxcfg.yml from sandbox.lua")
     else
-        local default = yml.parse(defaultFile) or {}
-        if default.game_type then
-            loadGameType(default.game_type)
+        local cfg = yml.parse(sandboxCfg) or {}
+        if cfg.game_type then
+            loadGameType(cfg.game_type)
         end
     end
 end
+
+local ignoreWeaponWords = {"skull", "ball", "flag", "gravity", "powerup", "power up", "power-up"}
 
 function OnGameStart()
     -- Find  weapon tags
@@ -91,10 +91,17 @@ function OnGameStart()
     for _, tag in pairs(weaponTags) do
         local weaponTag = blam.weaponTag(tag.id)
         -- Check if weapon has a model and does not contain words, skull, flag, gravity, etc.
-        if not isNull(weaponTag.model) and
-            not (tag.path:find("skull") or tag.path:find("ball") or tag.path:find("flag") or
-                tag.path:find("gravity")) then
-            glue.append(usableWeaponTags, tag)
+        if not isNull(weaponTag.model) then
+            local skipWeapon = false
+            for _, word in pairs(ignoreWeaponWords) do
+                if tag.path:includes(word) then
+                    skipWeapon = true
+                    break
+                end
+            end
+            if not skipWeapon then
+                table.insert(usableWeaponTags, tag)
+            end
         end
     end
 end
@@ -116,7 +123,7 @@ end
 --- Global console print to every player in the game
 function grprint(message)
     for playerIndex = 1, 16 do
-        if (player_present(playerIndex)) then
+        if player_present(playerIndex) then
             rprint(playerIndex, message)
         end
     end
@@ -130,7 +137,7 @@ function OnCommand(playerIndex, command, environment, rconPassword)
     -- Erase main command from the list
     local commandArgs = shift(fullCommand, 1, -1)
     local sandboxCommand = SandboxCommands[command]
-    if (sandboxCommand) then
+    if sandboxCommand then
         sandboxCommand(playerIndex, commandArgs)
         return false
     end
@@ -157,12 +164,14 @@ end
 function OnPlayerDie(playerIndex, causer)
     local causer = tonumber(causer)
     -- Prevent some events from looping
-    if (causer > -1) then
+    if causer > -1 then
+        assert(sandboxGame, "Sandbox game type is not loaded!")
         dispatchToy(sandboxGame.when.player.dies, playerIndex)
     end
 end
 
 function OnPlayerSpawn(playerIndex)
+    assert(sandboxGame, "Sandbox game type is not loaded!")
     dispatchToy(sandboxGame.when.player.spawns, playerIndex)
 end
 
@@ -176,7 +185,7 @@ end
 
 function OnPlayerAlive(playerIndex)
     local currentFunctions = queueFunctions[playerIndex]
-    if (currentFunctions) then
+    if currentFunctions then
         for actionIndex, action in pairs(currentFunctions) do
             action()
         end
@@ -187,7 +196,7 @@ end
 SandboxCommands = {
     load_gametype = function(playerIndex, commandArgs)
         local gameTypeName = commandArgs[1]
-        if (gameTypeName) then
+        if gameTypeName then
             loadGameType(gameTypeName)
         end
     end,
@@ -218,13 +227,13 @@ SandboxToys = {
         execute_command("wdel " .. playerIndex)
     end,
     ["add weapon"] = function(playerIndex, weaponTagPath)
-        if (weaponTagPath) then
+        if weaponTagPath then
             local playerX = get_var(playerIndex, "$x")
             local playerY = get_var(playerIndex, "$y")
             local playerZ = get_var(playerIndex, "$z") + 1
             local weaponId = spawn_object("weap", weaponTagPath, playerX, playerY, playerZ)
             -- Check if this is the right way to chweck weapon spawn
-            if (not isNull(weaponId)) then
+            if not isNull(weaponId) then
                 assign_weapon(weaponId, playerIndex)
             else
                 local path = split(weaponTagPath, "\\")
@@ -241,9 +250,13 @@ SandboxToys = {
         end
     end,
     ["add random weapon"] = function(playerIndex)
-        math.randomseed(os.time() + playerIndex)
+        local function abscoord(coord)
+            return math.floor(math.abs(tonumber(get_var(playerIndex, "$" .. coord)) or 0))
+        end
+        local randomFactor = abscoord("x") + playerIndex + math.random(1, os.time())
+        math.randomseed(os.time() + randomFactor)
         local weaponTagPath = usableWeaponTags[math.random(1, #usableWeaponTags)].path
-        if (weaponTagPath) then
+        if weaponTagPath then
             local playerX = get_var(playerIndex, "$x")
             local playerY = get_var(playerIndex, "$y")
             local playerZ = get_var(playerIndex, "$z") + 1
@@ -259,23 +272,23 @@ SandboxToys = {
         end
     end,
     ["enter vehicle"] = function(playerIndex, vehicleTagPath, seat, overloadedSeat)
-        if (vehicleTagPath) then
+        if vehicleTagPath then
             local seat = tonumber(seat or "0")
             local playerX = get_var(playerIndex, "$x")
             local playerY = get_var(playerIndex, "$y")
             local playerZ = get_var(playerIndex, "$z") + 1
             local vehicleId = spawn_object("vehi", vehicleTagPath, playerX, playerY, playerZ)
             -- Check if this is the right way to check weapon spawn
-            if (not isNull(vehicleId)) then
+            if not isNull(vehicleId) then
                 enter_vehicle(vehicleId, playerIndex, seat)
-                if (overloadedSeat) then
+                if overloadedSeat then
                     enter_vehicle(vehicleId, playerIndex, tonumber(overloadedSeat))
                 end
             else
                 local path = split(vehicleTagPath, "\\")
                 local inferedVehicleTagPath = vehicleTagPath .. "\\" .. path[#path]
                 vehicleId = spawn_object("vehi", inferedVehicleTagPath, playerX, playerY, playerZ)
-                if (not isNull(vehicleId)) then
+                if not isNull(vehicleId) then
                     enter_vehicle(vehicleId, playerIndex, seat)
                     if (overloadedSeat) then
                         enter_vehicle(vehicleId, playerIndex, tonumber(overloadedSeat))
@@ -289,14 +302,14 @@ SandboxToys = {
         end
     end,
     ["set weapon battery"] = function(playerIndex, battery)
-        if (battery) then
+        if battery then
             execute_command("battery " .. playerIndex .. " " .. battery)
         else
             error("battery is being executed with no params!")
         end
     end,
     ["set weapon mag"] = function(playerIndex, mag)
-        if (mag) then
+        if mag then
             execute_command("mag " .. playerIndex .. " " .. mag)
         else
             error("set weapon mag is being executed with no params!")
@@ -304,7 +317,7 @@ SandboxToys = {
     end,
 
     ["set weapon ammo"] = function(playerIndex, ammo)
-        if (ammo) then
+        if ammo then
             execute_command("ammo " .. playerIndex .. " " .. ammo)
             -- Set ammo as battery in case of a plasma/energy based weapon
             -- Check if is not causing conflicts with the weapons internal values
@@ -345,7 +358,7 @@ SandboxToys = {
 }
 
 function loadGameType(gameTypeName)
-    if (gameTypeName) then
+    if gameTypeName then
         local gameTypeName = gameTypeName:gsub("\"", "")
         cprint("\nLoading gametype: " .. gameTypeName)
 
@@ -356,8 +369,10 @@ function loadGameType(gameTypeName)
         if not glue.canopen(gametypeDefPath) then
             gametypeDefPath = gametypesPath:format("global", gameTypeName)
         end
-        local ymlSand = glue.readfile(gametypeDefPath, "t")
-        if (ymlSand) then
+        local ymlSand = luna.file.read(gametypeDefPath)
+        if ymlSand then
+            -- Replace forward slashes with backslashes (for compatibility with windows paths)
+            ymlSand = ymlSand:replace("/", "\\")
             -- Load gametype locally
             sandboxGame = yml.parse(ymlSand)
             grprint("Gametype " .. gameTypeName .. " has been loaded!")
@@ -368,7 +383,9 @@ function loadGameType(gameTypeName)
 
             -- Change stock gametype if sandbox gametype is based on another stock gametype
             local newGametypeLike = sandboxGame.like
-            dispatchToy(sandboxGame.when.gametype.starts)
+            if sandboxGame.when.gametype then
+                dispatchToy(sandboxGame.when.gametype.starts)
+            end
             -- if (newGametypeLike and newGametypeLike ~= currentGametypeLike) then
             --    execute_command("sv_map \"" .. currentMapName .. "\" " .. newGametypeLike)
             -- else
