@@ -1,0 +1,9 @@
+name: FUNsion
+description: Fusion coil madness
+version: 1
+like: slayer
+when:
+  player:
+    spawns:
+      - erase weapons
+      - add weapon -> keymind/halo_infinite/weapons/support/fusioncoil/plasma/plasma_fusioncoil

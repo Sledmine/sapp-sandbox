@@ -1,7 +1,7 @@
 name: SWAT
 description: No body moves, aim to the head and kill!
 version: 1
-like: ctf
+like: team_slayer
 when:
   player:
     spawns:
